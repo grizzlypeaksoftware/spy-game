@@ -26,8 +26,8 @@ The game is written in plain JavaScript on top of [three.js](https://threejs.org
 You need [Node.js](https://nodejs.org) 18 or newer and a desktop browser with WebGL. The game needs a mouse and keyboard.
 
 ```sh
-git clone <this repository>
-cd <repository folder>
+git clone https://github.com/grizzlypeaksoftware/spy-game.git
+cd spy-game
 npm start
 ```
 
