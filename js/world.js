@@ -304,6 +304,13 @@ export class World {
       d.hold = Math.max(0, d.hold - dt);
       if (d.hold > 0) want = true;
       const pd = Math.hypot(p.x - d.x, p.z - d.z);
+      // Slipping through a locked door behind a guard leaves the latch tripped, so
+      // the player can never be shut in on the far side without the card.
+      if (d.lock && !p.keys.has(d.lock) && d.open >= 0.85 && pd < 1.0 && !p.dead) {
+        d.lock = null;
+        d.mesh.material.map = this.tex.door.none;
+        game.hud.message('You jammed the latch on the way through. This door will open for you now.', 'info', 5);
+      }
       if (pd < 1.75 && !p.dead) {
         if (!d.lock || p.keys.has(d.lock)) want = true;
         else game.lockedDoor = d;
