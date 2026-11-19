@@ -17,7 +17,14 @@ const geoCache = new Map();
 function boxGeo(w, h, d) {
   const k = `${w},${h},${d}`;
   let g = geoCache.get(k);
-  if (!g) { g = new THREE.BoxGeometry(w, h, d); geoCache.set(k, g); }
+  if (!g) {
+    g = new THREE.BoxGeometry(w, h, d);
+    // Fixed shade per face (right, left, top, bottom, front, back) so the blocks read as solid.
+    const shade = [0.8, 0.8, 1.12, 0.55, 1, 0.9], col = [];
+    for (let f = 0; f < 6; f++) for (let v = 0; v < 4; v++) col.push(shade[f], shade[f], shade[f]);
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    geoCache.set(k, g);
+  }
   return g;
 }
 const wrap = (a) => {
@@ -81,7 +88,7 @@ export class Guard {
     this.mats = [];
     this.hitParts = [];
     const part = (w, h, d, color, zone) => {
-      const mat = new THREE.MeshBasicMaterial({ color });
+      const mat = new THREE.MeshBasicMaterial({ color, vertexColors: true });
       this.mats.push({ mat, base: new THREE.Color(color) });
       const m = new THREE.Mesh(boxGeo(w, h, d), mat);
       if (zone) { m.userData.guard = this; m.userData.zone = zone; this.hitParts.push(m); }
@@ -155,6 +162,9 @@ export class Guard {
     this.mark.position.y = 2.2;
     this.mark.visible = false;
     this.root.add(this.mark);
+
+    this.shadow = this.game.world.blob(1.25);
+    this.root.add(this.shadow);
 
     this.root.position.set(this.x, 0, this.z);
     this.root.rotation.y = this.facing;
@@ -374,6 +384,8 @@ export class Guard {
         this.fallT = Math.min(1, this.fallT + dt * 2.4);
         const e = 1 - (1 - this.fallT) * (1 - this.fallT);
         this.body.rotation.x = this.fallDir * e * Math.PI / 2;
+        this.shadow.position.z = this.fallDir * e * 0.85;
+        this.shadow.scale.z = 1.25 + e * 1.1;
         this.body.position.y = e * 0.14;
         this.tint(game);
       }
@@ -641,7 +653,7 @@ export class SecCamera {
 
     this.root = new THREE.Group();
     this.root.position.set(this.x, this.y, this.z);
-    const bodyMat = new THREE.MeshBasicMaterial({ color: 0x8d949a });
+    const bodyMat = new THREE.MeshBasicMaterial({ color: 0x8d949a, vertexColors: true });
     const body = new THREE.Mesh(boxGeo(0.2, 0.18, 0.42), bodyMat);
     body.userData.camera = this;
     this.hitPart = body;

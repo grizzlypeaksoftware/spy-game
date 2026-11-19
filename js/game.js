@@ -9,6 +9,7 @@ import { Player, WEAPONS } from './player.js';
 import { Sfx } from './audio.js';
 import { Hud } from './hud.js';
 import { FieldMap } from './map.js';
+import { Post } from './post.js';
 
 const PICKUPS = {
   keyBlue: { color: 0x3f82ff, size: [0.34, 0.03, 0.22] },
@@ -39,6 +40,7 @@ export class Game {
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
     this.renderer.autoClear = false;
+    this.post = new Post(this.renderer);
     this.camera = new THREE.PerspectiveCamera(70, 1, 0.05, 140);
     this.tex = makeTextures();
     this.audio = new Sfx();
@@ -208,8 +210,10 @@ export class Game {
     const def = PICKUPS[kind];
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(...def.size), new THREE.MeshBasicMaterial({ color: def.color }));
     mesh.position.set(x, 0.6, z);
-    this.scene.add(mesh);
-    this.pickups.push({ kind, x, z, mesh, phase: Math.random() * 6, taken: false });
+    const shadow = this.world.blob(0.7);
+    shadow.position.set(x, 0.015, z);
+    this.scene.add(mesh, shadow);
+    this.pickups.push({ kind, x, z, mesh, shadow, phase: Math.random() * 6, taken: false });
   }
 
   // --- input ---------------------------------------------------------------
@@ -834,7 +838,7 @@ export class Game {
       }
       if (took) {
         pk.taken = true;
-        this.scene.remove(pk.mesh);
+        this.scene.remove(pk.mesh, pk.shadow);
       }
     }
   }
@@ -914,6 +918,7 @@ export class Game {
     const scale = Math.max(1, Math.round(h / 540));
     this.renderer.setPixelRatio(1);
     this.renderer.setSize(Math.ceil(w / scale), Math.ceil(h / scale), false);
+    this.post.setSize(Math.ceil(w / scale), Math.ceil(h / scale));
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     if (this.player) { this.player.vmCam.aspect = w / h; this.player.vmCam.updateProjectionMatrix(); }
@@ -937,8 +942,9 @@ export class Game {
       this.player.applyCamera(this.camera);
     }
 
+    if (this.world.sky) this.world.sky.position.copy(this.camera.position);
     const r = this.renderer;
-    r.clear();
+    this.post.begin();
     r.render(this.scene, this.camera);
     if (this.state === 'playing' || this.state === 'paused') {
       const vm = this.player.vmCam;
@@ -946,5 +952,6 @@ export class Game {
       r.clearDepth();
       r.render(this.player.vmScene, vm);
     }
+    this.post.end(now / 1000);
   }
 }

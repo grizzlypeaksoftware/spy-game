@@ -23,6 +23,8 @@ function tex(w, h, seed, draw, opts = {}) {
   t.generateMipmaps = !opts.noMip;
   t.wrapS = t.wrapT = opts.clamp ? THREE.ClampToEdgeWrapping : THREE.RepeatWrapping;
   t.colorSpace = THREE.SRGBColorSpace;
+  // Keeps floors and long walls sharp when seen at a shallow angle.
+  if (!opts.noMip && !opts.clamp) t.anisotropy = 8;
   return t;
 }
 
@@ -776,6 +778,22 @@ export function makeTextures() {
       const a = (i / 4) * Math.PI;
       g.beginPath(); g.moveTo(16 - Math.cos(a) * 15, 16 - Math.sin(a) * 15); g.lineTo(16 + Math.cos(a) * 15, 16 + Math.sin(a) * 15); g.stroke();
     }
+  }, { clamp: true, noMip: true });
+
+  T.blob = tex(32, 32, 55, (g, w, h) => {
+    const gr = g.createRadialGradient(16, 16, 2, 16, 16, 16);
+    gr.addColorStop(0, 'rgba(0,0,0,0.62)'); gr.addColorStop(0.55, 'rgba(0,0,0,0.34)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, w, h);
+  }, { clamp: true, noMip: true });
+  T.blob.magFilter = THREE.LinearFilter;
+
+  T.moon = tex(32, 32, 56, (g, w, h, r) => {
+    const halo = g.createRadialGradient(16, 16, 6, 16, 16, 16);
+    halo.addColorStop(0, 'rgba(190,205,230,0.35)'); halo.addColorStop(1, 'rgba(190,205,230,0)');
+    g.fillStyle = halo; g.fillRect(0, 0, w, h);
+    g.fillStyle = '#e9ecef'; g.beginPath(); g.arc(16, 16, 7, 0, Math.PI * 2); g.fill();
+    g.fillStyle = 'rgba(150,160,175,0.55)';
+    for (const [x, y, s] of [[13, 14, 2], [18, 18, 1.5], [17, 12, 1], [13, 19, 1]]) { g.beginPath(); g.arc(x, y, s, 0, Math.PI * 2); g.fill(); }
   }, { clamp: true, noMip: true });
 
   const mark = (ch, color) => (g, w, h) => {

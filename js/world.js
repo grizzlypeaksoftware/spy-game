@@ -74,7 +74,9 @@ class Builder {
         this.world.light(sx, sy, sz, n[0], n[1], n[2], col);
         this.cache.set(key, col);
       }
-      bk.col.push(Math.max(col[0], glow), Math.max(col[1], glow), Math.max(col[2], glow));
+      // Corners and contact edges get a little darker, which grounds props and walls.
+      const ao = this.world.occlusion(x, y, z, n);
+      bk.col.push(Math.max(col[0] * ao, glow), Math.max(col[1] * ao, glow), Math.max(col[2] * ao, glow));
     };
 
     for (let i = 0; i < sub; i++) {
@@ -112,6 +114,7 @@ export class World {
     this.buildFixtures();
     this.buildExit();
     this.buildFx();
+    this.buildSky();
   }
 
   zoneOf(c, r) {
@@ -138,6 +141,32 @@ export class World {
       r += L.r * k; g += L.g * k; b += L.b * k;
     }
     out[0] = r; out[1] = g; out[2] = b;
+  }
+
+  /** True where level geometry fills the point: used only for corner shading. */
+  filled(x, y, z) {
+    if (y < 0) return true;
+    const c = Math.floor(x / TILE), r = Math.floor(z / TILE);
+    const ch = this.grid.ch(c, r);
+    if (ch === '#') return true;
+    if (y > WALL_H) return !!this.zoneOf(c, r).ceil;
+    if (ch === 'c') return y < LOW_H;
+    if (ch === 'C') return y < TALL_H;
+    return false;
+  }
+
+  /** Corner darkening for a vertex: 1 in the open, lower where surfaces meet. */
+  occlusion(x, y, z, n) {
+    const R = 0.35, out = 0.3;
+    const t1 = n[1] !== 0 ? [1, 0, 0] : [0, 1, 0];
+    const t2 = n[2] !== 0 ? [1, 0, 0] : [0, 0, 1];
+    let hit = 0;
+    for (const a of [-R, R]) {
+      for (const b of [-R, R]) {
+        if (this.filled(x + n[0] * out + t1[0] * a + t2[0] * b, y + n[1] * out + t1[1] * a + t2[1] * b, z + n[2] * out + t1[2] * a + t2[2] * b)) hit++;
+      }
+    }
+    return 1 - 0.52 * (hit / 4);
   }
 
   buildStatic() {
@@ -397,6 +426,78 @@ export class World {
       this.sparks.push(s);
       this.owned.push(mat);
     }
+  }
+
+  /** A soft dark disc that sits on the floor under a character or pickup. */
+  blob(size) {
+    if (!this.blobGeo) {
+      this.blobGeo = new THREE.PlaneGeometry(1, 1);
+      this.blobGeo.rotateX(-Math.PI / 2);
+      this.blobMat = new THREE.MeshBasicMaterial({
+        map: this.tex.blob, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2,
+      });
+      this.owned.push(this.blobGeo, this.blobMat);
+    }
+    const m = new THREE.Mesh(this.blobGeo, this.blobMat);
+    m.scale.set(size, 1, size);
+    m.position.y = 0.015;
+    return m;
+  }
+
+  /** Night sky for the open-air parts of a level: a graded dome, stars and a moon. */
+  buildSky() {
+    this.sky = null;
+    if (!this.mission.zones.some((z) => !z.ceil)) return;
+    const sky = new THREE.Group();
+    const base = new THREE.Color(this.mission.sky ?? 0x05070c);
+    const R = 120;
+
+    // The horizon keeps the fog colour so distant walls still fade into it.
+    const dome = new THREE.SphereGeometry(R, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2);
+    const pos = dome.attributes.position, cols = [];
+    const top = base.clone().multiplyScalar(0.45), glow = base.clone().multiplyScalar(1.5).add(new THREE.Color(0x04070c));
+    const c = new THREE.Color();
+    for (let i = 0; i < pos.count; i++) {
+      const h = Math.max(0, pos.getY(i) / R);
+      if (h < 0.12) c.copy(base).lerp(glow, h / 0.12);
+      else c.copy(glow).lerp(top, Math.min(1, (h - 0.12) / 0.5));
+      cols.push(c.r, c.g, c.b);
+    }
+    dome.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+    const domeMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false });
+    const domeMesh = new THREE.Mesh(dome, domeMat);
+    domeMesh.renderOrder = -3;
+    sky.add(domeMesh);
+
+    // Stars, thinner toward the horizon. A fixed seed keeps them still between visits.
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+    const sp = [], sc = [];
+    for (let i = 0; i < 520; i++) {
+      const y = 0.1 + rnd() * 0.9, a = rnd() * Math.PI * 2, k = Math.sqrt(1 - y * y);
+      sp.push(Math.cos(a) * k * (R - 4), y * (R - 4), Math.sin(a) * k * (R - 4));
+      const b = (0.25 + rnd() * rnd() * 0.9) * Math.min(1, y * 3);
+      sc.push(b * (0.85 + rnd() * 0.15), b * 0.92, b);
+    }
+    const starGeo = new THREE.BufferGeometry();
+    starGeo.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3));
+    starGeo.setAttribute('color', new THREE.Float32BufferAttribute(sc, 3));
+    const starMat = new THREE.PointsMaterial({ size: 1.6, sizeAttenuation: false, vertexColors: true, fog: false, depthWrite: false });
+    const stars = new THREE.Points(starGeo, starMat);
+    stars.renderOrder = -2;
+    sky.add(stars);
+
+    const moonMat = new THREE.SpriteMaterial({ map: this.tex.moon, fog: false, depthWrite: false, color: new THREE.Color(1.5, 1.5, 1.6) });
+    const moon = new THREE.Sprite(moonMat);
+    moon.position.set(-0.55, 0.5, -0.67).normalize().multiplyScalar(R - 8);
+    moon.scale.setScalar(9);
+    moon.renderOrder = -1;
+    sky.add(moon);
+
+    sky.traverse((o) => { o.frustumCulled = false; });
+    this.scene.add(sky);
+    this.sky = sky;
+    this.owned.push(dome, domeMat, starGeo, starMat, moonMat);
   }
 
   /** Mark and spark where a bullet lands. `h` is a Grid.raycast hit. */

@@ -97,6 +97,7 @@ js/grid.js        Tile grid, collision and line of sight
 js/map.js         The field map
 js/hud.js         Heads-up display
 js/textures.js    Textures drawn in code
+js/post.js        Glow, vignette and grain applied to the finished frame
 js/audio.js       Sound effects synthesised in code
 js/mission.js     Mission list and clearance levels
 js/missions/      One file per operation
