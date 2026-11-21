@@ -494,11 +494,55 @@ export class Game {
 
   onGuardDown(g) {
     this.stats.kills++;
-    if (g.drops) this.spawnPickup(g.drops, g.x + 0.4, g.z + 0.3);
+    if (g.drops) this.dropItem(g.drops, g.x, g.z);
     if (g.def.objective) this.advanceObjective(g.def.objective, 'Down:');
     // Heavies posted by the mission carry a grenade; alarm reinforcements do not.
     if (g.def.type === 'heavy' && !g.def.reinforcement) this.spawnPickup('grenade', g.x + 0.3, g.z - 0.4);
     this.spawnPickup(['officer', 'target', 'boss'].includes(g.def.type) ? 'ammoPistol' : 'smg', g.x - 0.3, g.z - 0.3);
+  }
+
+  /**
+   * Drop something a guard was carrying. A keycard must never land where the player
+   * cannot get to it (say, behind a locked door the guard had wandered through), so
+   * it is moved to the nearest floor the player can reach with the cards they hold.
+   */
+  dropItem(kind, gx, gz) {
+    const G = this.grid, p = this.player;
+    let x = gx + 0.4, z = gz + 0.3;
+    if (G.ch(G.tileC(x), G.tileR(z)) !== '.') { x = gx; z = gz; }
+    if (kind === 'keyBlue' || kind === 'keyRed') {
+      const open = (c, r) => {
+        const ch = G.ch(c, r);
+        if (ch === '.') return true;
+        if (ch !== 'D') return false;
+        const d = G.doorAt.get(r * G.cols + c);
+        return !d.lock || p.keys.has(d.lock);
+      };
+      const seen = new Set([G.tileR(p.z) * G.cols + G.tileC(p.x)]);
+      const queue = [[G.tileC(p.x), G.tileR(p.z)]];
+      for (let i = 0; i < queue.length; i++) {
+        const [c, r] = queue[i];
+        for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const k = (r + dr) * G.cols + c + dc;
+          if (seen.has(k) || !open(c + dc, r + dr)) continue;
+          seen.add(k);
+          queue.push([c + dc, r + dr]);
+        }
+      }
+      if (!seen.has(G.tileR(z) * G.cols + G.tileC(x))) {
+        let best = null, bd = Infinity;
+        for (const [c, r] of queue) {
+          if (G.ch(c, r) !== '.') continue;
+          const d = Math.hypot(G.cx(c) - gx, G.cz(r) - gz);
+          if (d < bd) { bd = d; best = [c, r]; }
+        }
+        if (best) {
+          x = G.cx(best[0]); z = G.cz(best[1]);
+          this.hud.message('The keycard skidded clear of the locked door. It is on your side.', 'info', 6);
+        }
+      }
+    }
+    this.spawnPickup(kind, x, z);
   }
 
   nearestPanel(x, z) {

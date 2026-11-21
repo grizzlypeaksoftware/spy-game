@@ -70,6 +70,29 @@ function renderMissions() {
     b.addEventListener('click', () => openBrief(i));
     wrap.appendChild(b);
   });
+  disarmReset();
+}
+
+// Reset asks for a second click rather than opening a browser dialog.
+let resetTimer = 0;
+function disarmReset() {
+  clearTimeout(resetTimer);
+  const b = $('btn-reset');
+  b.classList.remove('armed');
+  b.textContent = 'Reset progress';
+  b.disabled = !Object.keys(progress).length;
+}
+function onReset() {
+  const b = $('btn-reset');
+  if (!b.classList.contains('armed')) {
+    b.classList.add('armed');
+    b.textContent = 'Click again to erase all progress';
+    resetTimer = setTimeout(disarmReset, 4000);
+    return;
+  }
+  progress = {};
+  try { localStorage.removeItem(SAVE_KEY); } catch { /* nothing was saved */ }
+  renderMissions();
 }
 
 function openBrief(i) {
@@ -151,6 +174,7 @@ try {
 }
 
 $('btn-briefing').addEventListener('click', () => { game.audio.init(); renderMissions(); show('missions'); });
+$('btn-reset').addEventListener('click', onReset);
 $('btn-missions-back').addEventListener('click', () => show('title'));
 $('btn-back').addEventListener('click', () => { renderMissions(); show('missions'); });
 $('btn-start').addEventListener('click', () => { show(null); game.start(difficulty, missionIndex); });
